@@ -6,10 +6,10 @@ import { AuthService } from '../../../core/services/auth.service';
 import { StoreService } from '../../../core/services/store.service';
 
 @Component({
-    selector: 'app-register',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, RouterLink],
-    template: `
+  selector: 'app-register',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  template: `
     <div class="auth-page">
       <div class="auth-card">
         <div class="auth-header">
@@ -59,7 +59,7 @@ import { StoreService } from '../../../core/services/store.service';
             </div>
             <div class="form-group">
               <label>WhatsApp Number *</label>
-              <input formControlName="whatsapp" type="tel" placeholder="919876543210 (with country code)"
+              <input formControlName="whatsapp" type="tel" placeholder="919952211933 (with country code)"
                 [class.invalid]="isInvalid('whatsapp')" />
               @if (isInvalid('whatsapp')) {
                 <span class="field-error">Enter valid WhatsApp number (digits only)</span>
@@ -112,7 +112,7 @@ import { StoreService } from '../../../core/services/store.service';
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     .auth-page {
       min-height: 100vh; display: flex; align-items: center; justify-content: center;
       padding: 6rem 1rem 2rem; background: var(--bg);
@@ -170,82 +170,82 @@ import { StoreService } from '../../../core/services/store.service';
   `]
 })
 export class RegisterComponent {
-    private fb = inject(FormBuilder);
-    private auth = inject(AuthService);
-    private storeService = inject(StoreService);
-    private router = inject(Router);
+  private fb = inject(FormBuilder);
+  private auth = inject(AuthService);
+  private storeService = inject(StoreService);
+  private router = inject(Router);
 
-    loading = signal(false);
-    error = signal('');
-    slugTaken = signal(false);
+  loading = signal(false);
+  error = signal('');
+  slugTaken = signal(false);
 
-    form = this.fb.group({
-        shopName: ['', [Validators.required, Validators.minLength(3)]],
-        slug: ['', [Validators.required, Validators.pattern(/^[a-z0-9-]+$/)]],
-        ownerName: ['', Validators.required],
-        whatsapp: ['', [Validators.required, Validators.pattern(/^\d{10,15}$/)]],
-        email: ['', [Validators.required, Validators.email]],
-        password: ['', [Validators.required, Validators.minLength(6)]],
-        description: [''],
-        logo: ['']
+  form = this.fb.group({
+    shopName: ['', [Validators.required, Validators.minLength(3)]],
+    slug: ['', [Validators.required, Validators.pattern(/^[a-z0-9-]+$/)]],
+    ownerName: ['', Validators.required],
+    whatsapp: ['', [Validators.required, Validators.pattern(/^\d{10,15}$/)]],
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', [Validators.required, Validators.minLength(6)]],
+    description: [''],
+    logo: ['']
+  });
+
+  isInvalid(field: string): boolean {
+    const ctrl = this.form.get(field);
+    return !!(ctrl?.invalid && ctrl?.touched);
+  }
+
+  onShopNameChange(): void {
+    const name = this.form.get('shopName')?.value || '';
+    const slug = this.storeService.generateSlug(name);
+    this.form.get('slug')?.setValue(slug, { emitEvent: false });
+    this.slugTaken.set(this.storeService.slugExists(slug));
+  }
+
+  submit(): void {
+    this.form.markAllAsTouched();
+    if (this.form.invalid) return;
+    const v = this.form.value;
+    if (this.storeService.slugExists(v.slug!)) {
+      this.slugTaken.set(true);
+      return;
+    }
+    this.loading.set(true);
+    this.error.set('');
+
+    // Register user first
+    const regResult = this.auth.register({
+      ownerName: v.ownerName!,
+      email: v.email!,
+      password: v.password!,
+      storeId: '' // will update after store creation
     });
 
-    isInvalid(field: string): boolean {
-        const ctrl = this.form.get(field);
-        return !!(ctrl?.invalid && ctrl?.touched);
+    if (!regResult.success) {
+      this.error.set(regResult.error || 'Registration failed.');
+      this.loading.set(false);
+      return;
     }
 
-    onShopNameChange(): void {
-        const name = this.form.get('shopName')?.value || '';
-        const slug = this.storeService.generateSlug(name);
-        this.form.get('slug')?.setValue(slug, { emitEvent: false });
-        this.slugTaken.set(this.storeService.slugExists(slug));
+    // Create store
+    const store = this.storeService.create({
+      name: v.shopName!,
+      slug: v.slug!,
+      ownerName: v.ownerName!,
+      email: v.email!,
+      whatsapp: v.whatsapp!,
+      logo: v.logo || '',
+      description: v.description || '',
+      theme: 'light'
+    });
+
+    // Update user with storeId
+    const user = this.auth.currentUser();
+    if (user) {
+      this.auth.updateSession({ ...user, storeId: store.id });
     }
 
-    submit(): void {
-        this.form.markAllAsTouched();
-        if (this.form.invalid) return;
-        const v = this.form.value;
-        if (this.storeService.slugExists(v.slug!)) {
-            this.slugTaken.set(true);
-            return;
-        }
-        this.loading.set(true);
-        this.error.set('');
-
-        // Register user first
-        const regResult = this.auth.register({
-            ownerName: v.ownerName!,
-            email: v.email!,
-            password: v.password!,
-            storeId: '' // will update after store creation
-        });
-
-        if (!regResult.success) {
-            this.error.set(regResult.error || 'Registration failed.');
-            this.loading.set(false);
-            return;
-        }
-
-        // Create store
-        const store = this.storeService.create({
-            name: v.shopName!,
-            slug: v.slug!,
-            ownerName: v.ownerName!,
-            email: v.email!,
-            whatsapp: v.whatsapp!,
-            logo: v.logo || '',
-            description: v.description || '',
-            theme: 'light'
-        });
-
-        // Update user with storeId
-        const user = this.auth.currentUser();
-        if (user) {
-            this.auth.updateSession({ ...user, storeId: store.id });
-        }
-
-        this.loading.set(false);
-        this.router.navigate(['/admin']);
-    }
+    this.loading.set(false);
+    this.router.navigate(['/admin']);
+  }
 }

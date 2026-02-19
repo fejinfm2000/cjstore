@@ -5,10 +5,10 @@ import { AuthService } from '../../../core/services/auth.service';
 import { StoreService } from '../../../core/services/store.service';
 
 @Component({
-    selector: 'app-store-settings',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule],
-    template: `
+  selector: 'app-store-settings',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule],
+  template: `
     <div class="store-settings">
       <div class="page-header">
         <h1>Store Settings</h1>
@@ -41,7 +41,7 @@ import { StoreService } from '../../../core/services/store.service';
             </div>
             <div class="form-group">
               <label>WhatsApp Number *</label>
-              <input formControlName="whatsapp" type="tel" placeholder="919876543210"
+              <input formControlName="whatsapp" type="tel" placeholder="919952211933"
                 [class.invalid]="isInvalid('whatsapp')" />
               @if (isInvalid('whatsapp')) { <span class="field-error">Valid WhatsApp number required</span> }
               <span class="field-hint">Include country code (e.g. 91 for India)</span>
@@ -96,7 +96,7 @@ import { StoreService } from '../../../core/services/store.service';
       </form>
     </div>
   `,
-    styles: [`
+  styles: [`
     .store-settings { max-width: 700px; }
     .page-header { margin-bottom: 1.5rem; }
     .page-header h1 { font-size: 1.5rem; font-weight: 800; color: var(--text-primary); }
@@ -144,72 +144,72 @@ import { StoreService } from '../../../core/services/store.service';
   `]
 })
 export class StoreSettingsComponent implements OnInit {
-    private fb = inject(FormBuilder);
-    private auth = inject(AuthService);
-    private storeService = inject(StoreService);
+  private fb = inject(FormBuilder);
+  private auth = inject(AuthService);
+  private storeService = inject(StoreService);
 
-    loading = signal(false);
-    success = signal(false);
-    error = signal('');
-    copied = signal(false);
+  loading = signal(false);
+  success = signal(false);
+  error = signal('');
+  copied = signal(false);
 
-    form = this.fb.group({
-        name: ['', Validators.required],
-        slug: [{ value: '', disabled: true }],
-        whatsapp: ['', [Validators.required, Validators.pattern(/^\d{10,15}$/)]],
-        logo: [''],
-        description: [''],
-        theme: ['light']
+  form = this.fb.group({
+    name: ['', Validators.required],
+    slug: [{ value: '', disabled: true }],
+    whatsapp: ['', [Validators.required, Validators.pattern(/^\d{10,15}$/)]],
+    logo: [''],
+    description: [''],
+    theme: ['light']
+  });
+
+  ngOnInit(): void {
+    const user = this.auth.currentUser();
+    if (!user?.storeId) return;
+    const store = this.storeService.getById(user.storeId);
+    if (store) {
+      this.form.patchValue({
+        name: store.name,
+        slug: store.slug,
+        whatsapp: store.whatsapp,
+        logo: store.logo,
+        description: store.description,
+        theme: store.theme
+      });
+    }
+  }
+
+  isInvalid(field: string): boolean {
+    const ctrl = this.form.get(field);
+    return !!(ctrl?.invalid && ctrl?.touched);
+  }
+
+  onImgError(e: Event): void {
+    (e.target as HTMLImageElement).style.display = 'none';
+  }
+
+  copyUrl(): void {
+    const slug = this.form.get('slug')?.value;
+    navigator.clipboard.writeText(`${window.location.origin}/store/${slug}`);
+    this.copied.set(true);
+    setTimeout(() => this.copied.set(false), 2000);
+  }
+
+  submit(): void {
+    this.form.markAllAsTouched();
+    if (this.form.invalid) return;
+    const user = this.auth.currentUser();
+    if (!user?.storeId) return;
+    this.loading.set(true);
+    const v = this.form.getRawValue();
+    this.storeService.update(user.storeId, {
+      name: v.name!,
+      whatsapp: v.whatsapp!,
+      logo: v.logo || '',
+      description: v.description || '',
+      theme: (v.theme as 'light' | 'dark') || 'light'
     });
-
-    ngOnInit(): void {
-        const user = this.auth.currentUser();
-        if (!user?.storeId) return;
-        const store = this.storeService.getById(user.storeId);
-        if (store) {
-            this.form.patchValue({
-                name: store.name,
-                slug: store.slug,
-                whatsapp: store.whatsapp,
-                logo: store.logo,
-                description: store.description,
-                theme: store.theme
-            });
-        }
-    }
-
-    isInvalid(field: string): boolean {
-        const ctrl = this.form.get(field);
-        return !!(ctrl?.invalid && ctrl?.touched);
-    }
-
-    onImgError(e: Event): void {
-        (e.target as HTMLImageElement).style.display = 'none';
-    }
-
-    copyUrl(): void {
-        const slug = this.form.get('slug')?.value;
-        navigator.clipboard.writeText(`${window.location.origin}/store/${slug}`);
-        this.copied.set(true);
-        setTimeout(() => this.copied.set(false), 2000);
-    }
-
-    submit(): void {
-        this.form.markAllAsTouched();
-        if (this.form.invalid) return;
-        const user = this.auth.currentUser();
-        if (!user?.storeId) return;
-        this.loading.set(true);
-        const v = this.form.getRawValue();
-        this.storeService.update(user.storeId, {
-            name: v.name!,
-            whatsapp: v.whatsapp!,
-            logo: v.logo || '',
-            description: v.description || '',
-            theme: (v.theme as 'light' | 'dark') || 'light'
-        });
-        this.loading.set(false);
-        this.success.set(true);
-        setTimeout(() => this.success.set(false), 3000);
-    }
+    this.loading.set(false);
+    this.success.set(true);
+    setTimeout(() => this.success.set(false), 3000);
+  }
 }
