@@ -8,10 +8,10 @@ import { ProductService } from '../../../core/services/product.service';
 const CATEGORIES = ['T-Shirts', 'Jeans', 'Dresses', 'Footwear', 'Hoodies', 'Formal', 'Accessories', 'Bags', 'Electronics', 'Groceries', 'Books', 'Sports', 'Other'];
 
 @Component({
-    selector: 'app-add-product',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule],
-    template: `
+  selector: 'app-add-product',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule],
+  template: `
     <div class="add-product">
       <div class="page-header">
         <h1>Add New Product</h1>
@@ -21,6 +21,12 @@ const CATEGORIES = ['T-Shirts', 'Jeans', 'Dresses', 'Footwear', 'Hoodies', 'Form
       @if (success()) {
         <div class="alert alert-success">
           ✅ Product added successfully! <button (click)="success.set(false)">✕</button>
+        </div>
+      }
+
+      @if (error()) {
+        <div class="alert alert-error">
+          ❌ {{ error() }} <button (click)="error.set('')">✕</button>
         </div>
       }
 
@@ -95,13 +101,14 @@ const CATEGORIES = ['T-Shirts', 'Jeans', 'Dresses', 'Footwear', 'Hoodies', 'Form
       </form>
     </div>
   `,
-    styles: [`
+  styles: [`
     .add-product { max-width: 700px; }
     .page-header { margin-bottom: 1.5rem; }
     .page-header h1 { font-size: 1.5rem; font-weight: 800; color: var(--text-primary); }
     .subtitle { color: var(--text-secondary); margin-top: 0.25rem; }
     .alert { padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
     .alert-success { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
+    .alert-error { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
     .alert button { background: none; border: none; cursor: pointer; font-size: 1rem; color: inherit; }
     .product-form { background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; padding: 1.75rem; }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -144,59 +151,69 @@ const CATEGORIES = ['T-Shirts', 'Jeans', 'Dresses', 'Footwear', 'Hoodies', 'Form
   `]
 })
 export class AddProductComponent {
-    private fb = inject(FormBuilder);
-    private auth = inject(AuthService);
-    private productService = inject(ProductService);
-    private router = inject(Router);
+  private fb = inject(FormBuilder);
+  private auth = inject(AuthService);
+  private productService = inject(ProductService);
+  private router = inject(Router);
 
-    categories = CATEGORIES;
-    loading = signal(false);
-    success = signal(false);
+  categories = CATEGORIES;
+  loading = signal(false);
+  success = signal(false);
+  error = signal('');
 
-    form = this.fb.group({
-        name: ['', Validators.required],
-        category: ['', Validators.required],
-        price: [null as number | null, [Validators.required, Validators.min(0)]],
-        stock: [null as number | null, [Validators.required, Validators.min(0)]],
-        description: ['', Validators.required],
-        image: [''],
-        active: [true]
-    });
+  form = this.fb.group({
+    name: ['', Validators.required],
+    category: ['', Validators.required],
+    price: [null as number | null, [Validators.required, Validators.min(0)]],
+    stock: [null as number | null, [Validators.required, Validators.min(0)]],
+    description: ['', Validators.required],
+    image: [''],
+    active: [true]
+  });
 
-    isInvalid(field: string): boolean {
-        const ctrl = this.form.get(field);
-        return !!(ctrl?.invalid && ctrl?.touched);
-    }
+  isInvalid(field: string): boolean {
+    const ctrl = this.form.get(field);
+    return !!(ctrl?.invalid && ctrl?.touched);
+  }
 
-    onImgError(e: Event): void {
-        (e.target as HTMLImageElement).style.display = 'none';
-    }
+  onImgError(e: Event): void {
+    (e.target as HTMLImageElement).style.display = 'none';
+  }
 
-    resetForm(): void {
-        this.form.reset({ active: true });
-        this.success.set(false);
-    }
+  resetForm(): void {
+    this.form.reset({ active: true });
+    this.success.set(false);
+    this.error.set('');
+  }
 
-    submit(): void {
-        this.form.markAllAsTouched();
-        if (this.form.invalid) return;
-        const user = this.auth.currentUser();
-        if (!user?.storeId) return;
-        this.loading.set(true);
-        const v = this.form.value;
-        this.productService.create({
-            storeId: user.storeId,
-            name: v.name!,
-            description: v.description!,
-            price: v.price!,
-            category: v.category!,
-            stock: v.stock!,
-            image: v.image || '',
-            active: v.active ?? true
-        });
+  submit(): void {
+    this.form.markAllAsTouched();
+    if (this.form.invalid) return;
+    const user = this.auth.currentUser();
+    if (!user?.storeId) return;
+    this.loading.set(true);
+    this.error.set('');
+
+    const v = this.form.value;
+    this.productService.createProduct({
+      name: v.name!,
+      description: v.description!,
+      price: v.price!,
+      category: v.category!,
+      stock: v.stock!,
+      image: v.image || '',
+      active: v.active ?? true
+    }, user.storeId).subscribe({
+      next: () => {
         this.loading.set(false);
         this.success.set(true);
         this.resetForm();
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+      },
+      error: (err) => {
+        this.error.set(err.error?.message || err.error || 'Failed to add product.');
+        this.loading.set(false);
+      }
+    });
+  }
 }

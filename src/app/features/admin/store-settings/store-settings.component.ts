@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../../core/services/auth.service';
-import { StoreService } from '../../../core/services/store.service';
+import { StoreService, Store } from '../../../core/services/store.service';
 
 @Component({
   selector: 'app-store-settings',
@@ -164,9 +164,8 @@ export class StoreSettingsComponent implements OnInit {
 
   ngOnInit(): void {
     const user = this.auth.currentUser();
-    if (!user?.storeId) return;
-    const store = this.storeService.getById(user.storeId);
-    if (store) {
+    if (!user?.slug) return;
+    this.storeService.getBySlug(user.slug).subscribe(store => {
       this.form.patchValue({
         name: store.name,
         slug: store.slug,
@@ -175,7 +174,7 @@ export class StoreSettingsComponent implements OnInit {
         description: store.description,
         theme: store.theme
       });
-    }
+    });
   }
 
   isInvalid(field: string): boolean {
@@ -201,15 +200,22 @@ export class StoreSettingsComponent implements OnInit {
     if (!user?.storeId) return;
     this.loading.set(true);
     const v = this.form.getRawValue();
-    this.storeService.update(user.storeId, {
+    this.storeService.updateStore(user.storeId, {
       name: v.name!,
       whatsapp: v.whatsapp!,
       logo: v.logo || '',
       description: v.description || '',
       theme: (v.theme as 'light' | 'dark') || 'light'
+    }).subscribe({
+      next: () => {
+        this.loading.set(false);
+        this.success.set(true);
+        setTimeout(() => this.success.set(false), 3000);
+      },
+      error: (err) => {
+        this.error.set(err.error?.message || err.error || 'Failed to update store settings.');
+        this.loading.set(false);
+      }
     });
-    this.loading.set(false);
-    this.success.set(true);
-    setTimeout(() => this.success.set(false), 3000);
   }
 }

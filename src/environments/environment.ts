@@ -5,5 +5,6 @@ export const environment = {
     whatsappOrder: true,
     onlineShopping: false,
     multiVendor: true
-  }
+  },
+  apiUrl: 'http://localhost:8080/api'
 };

@@ -6,12 +6,13 @@ import { StoreService, Store } from '../../../core/services/store.service';
 import { ProductService, Product } from '../../../core/services/product.service';
 import { ProductCardComponent } from '../../../shared/components/product-card/product-card.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { switchMap, tap } from 'rxjs';
 
 @Component({
-    selector: 'app-store-home',
-    standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink, ProductCardComponent, LoadingSpinnerComponent],
-    template: `
+  selector: 'app-store-home',
+  standalone: true,
+  imports: [CommonModule, FormsModule, RouterLink, ProductCardComponent, LoadingSpinnerComponent],
+  template: `
     @if (loading()) {
       <app-loading-spinner />
     } @else if (!store()) {
@@ -109,7 +110,7 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
       </a>
     }
   `,
-    styles: [`
+  styles: [`
     .not-found {
       min-height: 60vh; display: flex; flex-direction: column;
       align-items: center; justify-content: center; text-align: center; padding: 2rem;
@@ -217,63 +218,66 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
   `]
 })
 export class StoreHomeComponent implements OnInit {
-    private route = inject(ActivatedRoute);
-    private storeService = inject(StoreService);
-    private productService = inject(ProductService);
+  private route = inject(ActivatedRoute);
+  private storeService = inject(StoreService);
+  private productService = inject(ProductService);
 
-    slug = '';
-    loading = signal(true);
-    store = signal<Store | null>(null);
-    allProducts = signal<Product[]>([]);
-    filteredProducts = signal<Product[]>([]);
-    categories = signal<string[]>([]);
+  slug = '';
+  loading = signal(true);
+  store = signal<Store | null>(null);
+  allProducts = signal<Product[]>([]);
+  filteredProducts = signal<Product[]>([]);
+  categories = signal<string[]>([]);
 
-    searchQuery = '';
-    selectedCategory = 'All';
-    sortBy = '';
+  searchQuery = '';
+  selectedCategory = 'All';
+  sortBy = '';
 
-    totalProducts = computed(() => this.allProducts().length);
+  totalProducts = computed(() => this.allProducts().length);
 
-    heroGradient = computed(() => {
-        const colors = ['135deg, #25D366 0%, #128C7E 100%', '135deg, #667eea 0%, #764ba2 100%',
-            '135deg, #f093fb 0%, #f5576c 100%', '135deg, #4facfe 0%, #00f2fe 100%',
-            '135deg, #43e97b 0%, #38f9d7 100%'];
-        const idx = (this.store()?.name.charCodeAt(0) || 0) % colors.length;
-        return `linear-gradient(${colors[idx]})`;
-    });
+  heroGradient = computed(() => {
+    const colors = ['135deg, #25D366 0%, #128C7E 100%', '135deg, #667eea 0%, #764ba2 100%',
+      '135deg, #f093fb 0%, #f5576c 100%', '135deg, #4facfe 0%, #00f2fe 100%',
+      '135deg, #43e97b 0%, #38f9d7 100%'];
+    const idx = (this.store()?.name.charCodeAt(0) || 0) % colors.length;
+    return `linear-gradient(${colors[idx]})`;
+  });
 
-    whatsappLink = computed(() => {
-        const s = this.store();
-        if (!s) return '#';
-        return `https://wa.me/${s.whatsapp}?text=${encodeURIComponent(`Hello! I'm browsing your store "${s.name}" on CJStore.`)}`;
-    });
+  whatsappLink = computed(() => {
+    const s = this.store();
+    if (!s) return '#';
+    return `https://wa.me/${s.whatsapp}?text=${encodeURIComponent(`Hello! I'm browsing your store "${s.name}" on CJStore.`)}`;
+  });
 
-    ngOnInit(): void {
-        this.slug = this.route.snapshot.paramMap.get('slug') || '';
-        const s = this.storeService.getBySlug(this.slug);
-        if (s) {
-            this.store.set(s);
-            this.storeService.incrementVisits(this.slug);
-            const products = this.productService.getActiveByStore(s.id);
-            this.allProducts.set(products);
-            this.filteredProducts.set(products);
-            this.categories.set(this.productService.getCategories(s.id));
-        }
+  ngOnInit(): void {
+    this.slug = this.route.snapshot.paramMap.get('slug') || '';
+    this.storeService.getBySlug(this.slug).pipe(
+      tap(s => this.store.set(s)),
+      switchMap(s => this.productService.getByStore(s.id)),
+      tap(products => {
+        this.allProducts.set(products);
+        this.filteredProducts.set(products);
+        const cats = products.filter(p => p.active).map(p => p.category);
+        this.categories.set([...new Set(cats)].sort());
         this.loading.set(false);
-    }
+      })
+    ).subscribe({
+      error: () => this.loading.set(false)
+    });
+  }
 
-    onFilterChange(): void {
-        const s = this.store();
-        if (!s) return;
-        this.filteredProducts.set(
-            this.productService.search(s.id, this.searchQuery, this.selectedCategory, this.sortBy)
-        );
-    }
+  onFilterChange(): void {
+    const s = this.store();
+    if (!s) return;
+    this.productService.search(s.id, this.searchQuery, this.selectedCategory, this.sortBy).subscribe(products => {
+      this.filteredProducts.set(products);
+    });
+  }
 
-    resetFilters(): void {
-        this.searchQuery = '';
-        this.selectedCategory = 'All';
-        this.sortBy = '';
-        this.onFilterChange();
-    }
+  resetFilters(): void {
+    this.searchQuery = '';
+    this.selectedCategory = 'All';
+    this.sortBy = '';
+    this.onFilterChange();
+  }
 }

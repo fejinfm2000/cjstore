@@ -1,9 +1,10 @@
-import { Component, inject, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
-import { StoreService } from '../../../core/services/store.service';
-import { ProductService } from '../../../core/services/product.service';
+import { StoreService, Store } from '../../../core/services/store.service';
+import { ProductService, Product } from '../../../core/services/product.service';
+import { forkJoin, map, of } from 'rxjs';
 
 @Component({
   selector: 'app-dashboard',
@@ -24,99 +25,103 @@ import { ProductService } from '../../../core/services/product.service';
         }
       </div>
 
-      <!-- Stats Grid -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg,#25D366,#128C7E)">📦</div>
-          <div class="stat-body">
-            <span class="stat-value">{{ totalProducts() }}</span>
-            <span class="stat-label">Total Products</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg,#667eea,#764ba2)">✅</div>
-          <div class="stat-body">
-            <span class="stat-value">{{ activeProducts() }}</span>
-            <span class="stat-label">Active Products</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg,#f093fb,#f5576c)">⚠️</div>
-          <div class="stat-body">
-            <span class="stat-value">{{ lowStockProducts() }}</span>
-            <span class="stat-label">Low Stock (≤5)</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg,#4facfe,#00f2fe)">👁️</div>
-          <div class="stat-body">
-            <span class="stat-value">{{ store()?.visits ?? 0 }}</span>
-            <span class="stat-label">Store Visits</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Actions -->
-      <div class="section-title">Quick Actions</div>
-      <div class="quick-actions">
-        <a routerLink="/admin/add-product" class="action-card">
-          <span class="action-icon">➕</span>
-          <span class="action-label">Add Product</span>
-        </a>
-        <a routerLink="/admin/products" class="action-card">
-          <span class="action-icon">📋</span>
-          <span class="action-label">Manage Products</span>
-        </a>
-        <a routerLink="/admin/settings" class="action-card">
-          <span class="action-icon">⚙️</span>
-          <span class="action-label">Store Settings</span>
-        </a>
-        @if (store()) {
-          <a [routerLink]="['/store', store()!.slug]" class="action-card">
-            <span class="action-icon">🛍️</span>
-            <span class="action-label">View Store</span>
-          </a>
-        }
-      </div>
-
-      <!-- Low Stock Alert -->
-      @if (lowStockList().length > 0) {
-        <div class="section-title">⚠️ Low Stock Alert</div>
-        <div class="alert-list">
-          @for (p of lowStockList(); track p.id) {
-            <div class="alert-item">
-              <span class="alert-name">{{ p.name }}</span>
-              <span class="alert-stock" [class.critical]="p.stock === 0">
-                {{ p.stock === 0 ? 'Out of Stock' : p.stock + ' left' }}
-              </span>
+      @if (loading()) {
+        <div class="loading-state">Loading dashboard data...</div>
+      } @else {
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg,#25D366,#128C7E)">📦</div>
+            <div class="stat-body">
+              <span class="stat-value">{{ totalProducts() }}</span>
+              <span class="stat-label">Total Products</span>
             </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg,#667eea,#764ba2)">✅</div>
+            <div class="stat-body">
+              <span class="stat-value">{{ activeProducts() }}</span>
+              <span class="stat-label">Active Products</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg,#f093fb,#f5576c)">⚠️</div>
+            <div class="stat-body">
+              <span class="stat-value">{{ lowStockProducts() }}</span>
+              <span class="stat-label">Low Stock (≤5)</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg,#4facfe,#00f2fe)">👁️</div>
+            <div class="stat-body">
+              <span class="stat-value">{{ store()?.visits ?? 0 }}</span>
+              <span class="stat-label">Store Visits</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="section-title">Quick Actions</div>
+        <div class="quick-actions">
+          <a routerLink="/admin/add-product" class="action-card">
+            <span class="action-icon">➕</span>
+            <span class="action-label">Add Product</span>
+          </a>
+          <a routerLink="/admin/products" class="action-card">
+            <span class="action-icon">📋</span>
+            <span class="action-label">Manage Products</span>
+          </a>
+          <a routerLink="/admin/settings" class="action-card">
+            <span class="action-icon">⚙️</span>
+            <span class="action-label">Store Settings</span>
+          </a>
+          @if (store()) {
+            <a [routerLink]="['/store', store()!.slug]" class="action-card">
+              <span class="action-icon">🛍️</span>
+              <span class="action-label">View Store</span>
+            </a>
           }
         </div>
-      }
 
-      <!-- Store Info Card -->
-      @if (store()) {
-        <div class="section-title">Store Info</div>
-        <div class="store-info-card">
-          <div class="info-row">
-            <span class="info-label">Store Name</span>
-            <span class="info-value">{{ store()!.name }}</span>
+        <!-- Low Stock Alert -->
+        @if (lowStockList().length > 0) {
+          <div class="section-title">⚠️ Low Stock Alert</div>
+          <div class="alert-list">
+            @for (p of lowStockList(); track p.id) {
+              <div class="alert-item">
+                <span class="alert-name">{{ p.name }}</span>
+                <span class="alert-stock" [class.critical]="p.stock === 0">
+                  {{ p.stock === 0 ? 'Out of Stock' : p.stock + ' left' }}
+                </span>
+              </div>
+            }
           </div>
-          <div class="info-row">
-            <span class="info-label">Store URL</span>
-            <a [href]="'/store/' + store()!.slug" target="_blank" class="info-link">
-              cjstore.com/store/{{ store()!.slug }}
-            </a>
+        }
+
+        <!-- Store Info Card -->
+        @if (store()) {
+          <div class="section-title">Store Info</div>
+          <div class="store-info-card">
+            <div class="info-row">
+              <span class="info-label">Store Name</span>
+              <span class="info-value">{{ store()!.name }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Store URL</span>
+              <a [href]="'/store/' + store()!.slug" target="_blank" class="info-link">
+                cjstore.com/store/{{ store()!.slug }}
+              </a>
+            </div>
+            <div class="info-row">
+              <span class="info-label">WhatsApp</span>
+              <span class="info-value">+{{ store()!.whatsapp }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Created</span>
+              <span class="info-value">{{ store()!.createdAt | date:'mediumDate' }}</span>
+            </div>
           </div>
-          <div class="info-row">
-            <span class="info-label">WhatsApp</span>
-            <span class="info-value">+{{ store()!.whatsapp }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Created</span>
-            <span class="info-value">{{ store()!.createdAt | date:'mediumDate' }}</span>
-          </div>
-        </div>
+        }
       }
     </div>
   `,
@@ -127,6 +132,7 @@ import { ProductService } from '../../../core/services/product.service';
     .subtitle { color: var(--text-secondary); margin-top: 0.25rem; }
     .view-store-btn { background: var(--primary); color: white; padding: 0.6rem 1.25rem; border-radius: 50px; text-decoration: none; font-weight: 600; font-size: 0.9rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(37,211,102,0.3); transition: all 0.2s; }
     .view-store-btn:hover { transform: translateY(-1px); }
+    .loading-state { text-align: center; padding: 4rem; color: var(--text-secondary); }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
     .stat-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem; box-shadow: var(--card-shadow); transition: transform 0.2s; }
     .stat-card:hover { transform: translateY(-2px); }
@@ -154,22 +160,30 @@ import { ProductService } from '../../../core/services/product.service';
     .info-link { color: var(--primary); text-decoration: none; font-size: 0.9rem; font-weight: 600; }
   `]
 })
-export class DashboardComponent {
+export class DashboardComponent implements OnInit {
   auth = inject(AuthService);
   private storeService = inject(StoreService);
   private productService = inject(ProductService);
 
-  store = computed(() => {
-    const user = this.auth.currentUser();
-    if (!user?.storeId) return null;
-    return this.storeService.getById(user.storeId) || null;
-  });
+  loading = signal(true);
+  store = signal<Store | null>(null);
+  storeProducts = signal<Product[]>([]);
 
-  private storeProducts = computed(() => {
-    const s = this.store();
-    if (!s) return [];
-    return this.productService.getByStore(s.id);
-  });
+  ngOnInit(): void {
+    const user = this.auth.currentUser();
+    if (user?.slug) {
+      this.loading.set(true);
+      this.storeService.getBySlug(user.slug).subscribe(store => {
+        this.store.set(store);
+        this.productService.getByStore(store.id).subscribe(products => {
+          this.storeProducts.set(products);
+          this.loading.set(false);
+        });
+      });
+    } else {
+      this.loading.set(false);
+    }
+  }
 
   totalProducts = computed(() => this.storeProducts().length);
   activeProducts = computed(() => this.storeProducts().filter(p => p.active).length);

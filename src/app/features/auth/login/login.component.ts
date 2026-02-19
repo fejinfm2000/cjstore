@@ -5,10 +5,10 @@ import { CommonModule } from '@angular/common';
 import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
-    selector: 'app-login',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, RouterLink],
-    template: `
+  selector: 'app-login',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  template: `
     <div class="auth-page">
       <div class="auth-card">
         <div class="auth-header">
@@ -58,7 +58,7 @@ import { AuthService } from '../../../core/services/auth.service';
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     .auth-page {
       min-height: 100vh; display: flex; align-items: center; justify-content: center;
       padding: 6rem 1rem 2rem; background: var(--bg);
@@ -110,36 +110,39 @@ import { AuthService } from '../../../core/services/auth.service';
   `]
 })
 export class LoginComponent {
-    private fb = inject(FormBuilder);
-    private auth = inject(AuthService);
-    private router = inject(Router);
+  private fb = inject(FormBuilder);
+  private auth = inject(AuthService);
+  private router = inject(Router);
 
-    loading = signal(false);
-    error = signal('');
+  loading = signal(false);
+  error = signal('');
 
-    form = this.fb.group({
-        email: ['', [Validators.required, Validators.email]],
-        password: ['', Validators.required]
-    });
+  form = this.fb.group({
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', Validators.required]
+  });
 
-    isInvalid(field: string): boolean {
-        const ctrl = this.form.get(field);
-        return !!(ctrl?.invalid && ctrl?.touched);
-    }
+  isInvalid(field: string): boolean {
+    const ctrl = this.form.get(field);
+    return !!(ctrl?.invalid && ctrl?.touched);
+  }
 
-    submit(): void {
-        this.form.markAllAsTouched();
-        if (this.form.invalid) return;
-        this.loading.set(true);
-        this.error.set('');
-        const { email, password } = this.form.value;
-        const result = this.auth.login(email!, password!);
-        if (!result.success) {
-            this.error.set(result.error || 'Login failed.');
-            this.loading.set(false);
-            return;
-        }
+  submit(): void {
+    this.form.markAllAsTouched();
+    if (this.form.invalid) return;
+    this.loading.set(true);
+    this.error.set('');
+    const { email, password } = this.form.value;
+
+    this.auth.login(email!, password!).subscribe({
+      next: () => {
         this.loading.set(false);
         this.router.navigate(['/admin']);
-    }
+      },
+      error: (err) => {
+        this.error.set(err.error?.message || err.error || 'Invalid email or password.');
+        this.loading.set(false);
+      }
+    });
+  }
 }

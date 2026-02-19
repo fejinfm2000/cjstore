@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -9,16 +9,16 @@ import { ConfirmModalComponent } from '../../../shared/components/confirm-modal/
 const PAGE_SIZE = 8;
 
 @Component({
-    selector: 'app-manage-products',
-    standalone: true,
-    imports: [CommonModule, RouterLink, FormsModule, ConfirmModalComponent],
-    changeDetection: ChangeDetectionStrategy.OnPush,
-    template: `
+  selector: 'app-manage-products',
+  standalone: true,
+  imports: [CommonModule, RouterLink, FormsModule, ConfirmModalComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
     <div class="manage-products">
       <div class="page-header">
         <div>
           <h1>My Products</h1>
-          <p class="subtitle">{{ allProducts().length }} total products in your store</p>
+          <p class="subtitle">{{ rawProducts().length }} total products in your store</p>
         </div>
         <a routerLink="/admin/add-product" class="btn-add">➕ Add Product</a>
       </div>
@@ -34,11 +34,13 @@ const PAGE_SIZE = 8;
         </select>
       </div>
 
-      @if (pagedProducts().length === 0) {
+      @if (loading()) {
+        <div class="loading-state">Loading products...</div>
+      } @else if (pagedProducts().length === 0) {
         <div class="empty-state">
           <span class="empty-icon">📦</span>
           <h3>No products found</h3>
-          <p>{{ allProducts().length === 0 ? 'Add your first product to get started.' : 'Try adjusting your search.' }}</p>
+          <p>{{ rawProducts().length === 0 ? 'Add your first product to get started.' : 'Try adjusting your search.' }}</p>
           <a routerLink="/admin/add-product" class="btn-primary">Add First Product</a>
         </div>
       } @else {
@@ -136,7 +138,7 @@ const PAGE_SIZE = 8;
       (cancel)="showModal.set(false)"
     />
   `,
-    styles: [`
+  styles: [`
     .manage-products { }
     .page-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
     .page-header h1 { font-size: 1.5rem; font-weight: 800; color: var(--text-primary); }
@@ -146,6 +148,7 @@ const PAGE_SIZE = 8;
     .search-input { flex: 1; min-width: 200px; padding: 0.6rem 0.9rem; border: 1.5px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-primary); font-size: 0.9rem; }
     .search-input:focus { outline: none; border-color: var(--primary); }
     .filter-select { padding: 0.6rem 0.9rem; border: 1.5px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-primary); font-size: 0.9rem; cursor: pointer; }
+    .loading-state { text-align: center; padding: 4rem; color: var(--text-secondary); }
     .empty-state { text-align: center; padding: 4rem 2rem; }
     .empty-icon { font-size: 3rem; display: block; margin-bottom: 1rem; }
     .empty-state h3 { font-size: 1.3rem; font-weight: 700; color: var(--text-primary); }
@@ -193,70 +196,97 @@ const PAGE_SIZE = 8;
     .page-info { font-size: 0.82rem; color: var(--text-secondary); margin-left: 0.5rem; }
   `]
 })
-export class ManageProductsComponent {
-    private auth = inject(AuthService);
-    private productService = inject(ProductService);
+export class ManageProductsComponent implements OnInit {
+  private auth = inject(AuthService);
+  private productService = inject(ProductService);
 
-    searchQuery = '';
-    filterStatus = 'all';
-    currentPage = signal(1);
-    showModal = signal(false);
-    deleteTarget = signal<Product | null>(null);
-    editingId = signal<string | null>(null);
-    editName = '';
-    editPrice = 0;
-    editStock = 0;
+  loading = signal(true);
+  rawProducts = signal<Product[]>([]);
 
-    allProducts = computed(() => {
-        const user = this.auth.currentUser();
-        if (!user?.storeId) return [];
-        let products = this.productService.getByStore(user.storeId);
-        if (this.searchQuery.trim()) {
-            const q = this.searchQuery.toLowerCase();
-            products = products.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
-        }
-        if (this.filterStatus === 'active') products = products.filter(p => p.active);
-        if (this.filterStatus === 'inactive') products = products.filter(p => !p.active);
-        return products;
-    });
+  searchQuery = '';
+  filterStatus = 'all';
+  currentPage = signal(1);
+  showModal = signal(false);
+  deleteTarget = signal<Product | null>(null);
+  editingId = signal<string | null>(null);
+  editName = '';
+  editPrice = 0;
+  editStock = 0;
 
-    totalPages = computed(() => Math.max(1, Math.ceil(this.allProducts().length / PAGE_SIZE)));
-    pageNumbers = computed(() => Array.from({ length: this.totalPages() }, (_, i) => i + 1));
-    pagedProducts = computed(() => {
-        const start = (this.currentPage() - 1) * PAGE_SIZE;
-        return this.allProducts().slice(start, start + PAGE_SIZE);
-    });
+  ngOnInit(): void {
+    this.loadProducts();
+  }
 
-    toggleActive(p: Product): void {
-        this.productService.update(p.id, { active: !p.active });
+  private loadProducts(): void {
+    const user = this.auth.currentUser();
+    if (user?.storeId) {
+      this.loading.set(true);
+      this.productService.getByStore(user.storeId).subscribe({
+        next: (products) => {
+          this.rawProducts.set(products);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false)
+      });
     }
+  }
 
-    confirmDelete(p: Product): void {
-        this.deleteTarget.set(p);
-        this.showModal.set(true);
+  allProducts = computed(() => {
+    let products = this.rawProducts();
+    if (this.searchQuery.trim()) {
+      const q = this.searchQuery.toLowerCase();
+      products = products.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
     }
+    if (this.filterStatus === 'active') products = products.filter(p => p.active);
+    if (this.filterStatus === 'inactive') products = products.filter(p => !p.active);
+    return products;
+  });
 
-    doDelete(): void {
-        const t = this.deleteTarget();
-        if (t) this.productService.delete(t.id);
+  totalPages = computed(() => Math.max(1, Math.ceil(this.allProducts().length / PAGE_SIZE)));
+  pageNumbers = computed(() => Array.from({ length: this.totalPages() }, (_, i) => i + 1));
+  pagedProducts = computed(() => {
+    const start = (this.currentPage() - 1) * PAGE_SIZE;
+    return this.allProducts().slice(start, start + PAGE_SIZE);
+  });
+
+  toggleActive(p: Product): void {
+    this.productService.updateProduct(p.id, { active: !p.active }).subscribe(() => {
+      this.loadProducts(); // Refresh list
+    });
+  }
+
+  confirmDelete(p: Product): void {
+    this.deleteTarget.set(p);
+    this.showModal.set(true);
+  }
+
+  doDelete(): void {
+    const t = this.deleteTarget();
+    if (t) {
+      this.productService.deleteProduct(t.id).subscribe(() => {
+        this.loadProducts();
         this.showModal.set(false);
         this.deleteTarget.set(null);
         if (this.currentPage() > this.totalPages()) this.currentPage.set(this.totalPages());
+      });
     }
+  }
 
-    startEdit(p: Product): void {
-        this.editingId.set(p.id);
-        this.editName = p.name;
-        this.editPrice = p.price;
-        this.editStock = p.stock;
-    }
+  startEdit(p: Product): void {
+    this.editingId.set(p.id);
+    this.editName = p.name;
+    this.editPrice = p.price;
+    this.editStock = p.stock;
+  }
 
-    saveEdit(p: Product): void {
-        this.productService.update(p.id, { name: this.editName, price: this.editPrice, stock: this.editStock });
-        this.editingId.set(null);
-    }
+  saveEdit(p: Product): void {
+    this.productService.updateProduct(p.id, { name: this.editName, price: this.editPrice, stock: this.editStock }).subscribe(() => {
+      this.loadProducts();
+      this.editingId.set(null);
+    });
+  }
 
-    onImgError(e: Event): void {
-        (e.target as HTMLImageElement).style.display = 'none';
-    }
+  onImgError(e: Event): void {
+    (e.target as HTMLImageElement).style.display = 'none';
+  }
 }

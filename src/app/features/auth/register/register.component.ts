@@ -1,9 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators, AbstractControl } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../../core/services/auth.service';
 import { StoreService } from '../../../core/services/store.service';
+import { switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-register',
@@ -197,55 +198,50 @@ export class RegisterComponent {
 
   onShopNameChange(): void {
     const name = this.form.get('shopName')?.value || '';
-    const slug = this.storeService.generateSlug(name);
+    const slug = name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
     this.form.get('slug')?.setValue(slug, { emitEvent: false });
-    this.slugTaken.set(this.storeService.slugExists(slug));
   }
 
   submit(): void {
     this.form.markAllAsTouched();
     if (this.form.invalid) return;
-    const v = this.form.value;
-    if (this.storeService.slugExists(v.slug!)) {
-      this.slugTaken.set(true);
-      return;
-    }
+
     this.loading.set(true);
     this.error.set('');
 
-    // Register user first
-    const regResult = this.auth.register({
+    const v = this.form.value;
+
+    this.auth.register({
       ownerName: v.ownerName!,
       email: v.email!,
-      password: v.password!,
-      storeId: '' // will update after store creation
+      password: v.password!
+    }).pipe(
+      switchMap(() => this.auth.login(v.email!, v.password!)),
+      switchMap((authRes) => {
+        return this.storeService.createStore({
+          name: v.shopName!,
+          slug: v.slug!,
+          ownerName: v.ownerName!,
+          email: v.email!,
+          whatsapp: v.whatsapp!,
+          logo: v.logo || '',
+          description: v.description || '',
+          theme: 'light'
+        }, authRes.id);
+      })
+    ).subscribe({
+      next: (store) => {
+        const user = this.auth.currentUser();
+        if (user) {
+          this.auth.updateSession({ ...user, storeId: store.id });
+        }
+        this.loading.set(false);
+        this.router.navigate(['/admin']);
+      },
+      error: (err) => {
+        this.error.set(err.error?.message || err.error || 'Registration or Store creation failed.');
+        this.loading.set(false);
+      }
     });
-
-    if (!regResult.success) {
-      this.error.set(regResult.error || 'Registration failed.');
-      this.loading.set(false);
-      return;
-    }
-
-    // Create store
-    const store = this.storeService.create({
-      name: v.shopName!,
-      slug: v.slug!,
-      ownerName: v.ownerName!,
-      email: v.email!,
-      whatsapp: v.whatsapp!,
-      logo: v.logo || '',
-      description: v.description || '',
-      theme: 'light'
-    });
-
-    // Update user with storeId
-    const user = this.auth.currentUser();
-    if (user) {
-      this.auth.updateSession({ ...user, storeId: store.id });
-    }
-
-    this.loading.set(false);
-    this.router.navigate(['/admin']);
   }
 }

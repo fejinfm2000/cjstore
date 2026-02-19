@@ -5,5 +5,6 @@ export const environment = {
         whatsappOrder: true,
         onlineShopping: false,
         multiVendor: true
-    }
+    },
+    apiUrl: 'https://cjstore-api.onrender.com/api'
 };

@@ -1,20 +1,36 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
+import { Observable, tap, catchError, of } from 'rxjs';
 
 export interface User {
     id: string;
     ownerName: string;
     email: string;
-    password: string;
-    storeId: string;
+    role: string;
+    storeId?: string;
+    slug?: string;
 }
 
-const USERS_KEY = 'cjstore_users';
+interface AuthResponse {
+    token: string;
+    id: string;
+    email: string;
+    ownerName: string;
+    role: string;
+    storeId?: string;
+    slug?: string;
+}
+
 const SESSION_KEY = 'cjstore_session';
+const TOKEN_KEY = 'cjstore_token';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-    private _currentUser = signal<User | null>(this.loadSession());
+    private http = inject(HttpClient);
+    private apiUrl = `${environment.apiUrl}/auth`;
 
+    private _currentUser = signal<User | null>(this.loadSession());
     readonly currentUser = this._currentUser.asReadonly();
     readonly isLoggedIn = computed(() => this._currentUser() !== null);
 
@@ -27,43 +43,34 @@ export class AuthService {
         }
     }
 
-    private getUsers(): User[] {
-        try {
-            const raw = localStorage.getItem(USERS_KEY);
-            return raw ? JSON.parse(raw) : [];
-        } catch {
-            return [];
-        }
+    getToken(): string | null {
+        return localStorage.getItem(TOKEN_KEY);
     }
 
-    private saveUsers(users: User[]): void {
-        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    register(data: any): Observable<any> {
+        return this.http.post(`${this.apiUrl}/register`, data);
     }
 
-    register(data: Omit<User, 'id'>): { success: boolean; error?: string } {
-        const users = this.getUsers();
-        if (users.find(u => u.email === data.email)) {
-            return { success: false, error: 'Email already registered.' };
-        }
-        const user: User = { ...data, id: crypto.randomUUID() };
-        users.push(user);
-        this.saveUsers(users);
-        this.setSession(user);
-        return { success: true };
-    }
-
-    login(email: string, password: string): { success: boolean; error?: string } {
-        const users = this.getUsers();
-        const user = users.find(u => u.email === email && u.password === password);
-        if (!user) {
-            return { success: false, error: 'Invalid email or password.' };
-        }
-        this.setSession(user);
-        return { success: true };
+    login(email: string, password: string): Observable<AuthResponse> {
+        return this.http.post<AuthResponse>(`${this.apiUrl}/login`, { email, password }).pipe(
+            tap(res => {
+                const user: User = {
+                    id: res.id,
+                    email: res.email,
+                    ownerName: res.ownerName,
+                    role: res.role,
+                    storeId: res.storeId,
+                    slug: res.slug
+                };
+                localStorage.setItem(TOKEN_KEY, res.token);
+                this.setSession(user);
+            })
+        );
     }
 
     logout(): void {
         localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(TOKEN_KEY);
         this._currentUser.set(null);
     }
 
@@ -73,12 +80,6 @@ export class AuthService {
     }
 
     updateSession(user: User): void {
-        const users = this.getUsers();
-        const idx = users.findIndex(u => u.id === user.id);
-        if (idx !== -1) {
-            users[idx] = user;
-            this.saveUsers(users);
-        }
         this.setSession(user);
     }
 }

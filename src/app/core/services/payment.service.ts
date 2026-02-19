@@ -1,15 +1,29 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
+import { Observable } from 'rxjs';
 
-// Future: enabled when onlineShopping feature flag is true
+export interface PaymentOrder {
+    orderId: string;
+    amount: number;
+    currency: string;
+    key: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PaymentService {
-    initiatePayment(_orderId: string, _amount: number): Promise<void> {
-        // TODO: integrate Razorpay / Stripe when onlineShopping is enabled
-        return Promise.reject(new Error('PaymentService: onlineShopping feature is disabled.'));
+    private http = inject(HttpClient);
+    private apiUrl = `${environment.apiUrl}/payments`;
+
+    createOrder(amount: number, storeId: string): Observable<PaymentOrder> {
+        return this.http.post<PaymentOrder>(`${this.apiUrl}/create-order`, { amount, storeId });
     }
 
-    verifyPayment(_paymentId: string): Promise<boolean> {
-        // TODO: implement payment verification
-        return Promise.resolve(false);
+    verifyPayment(paymentData: {
+        razorpay_order_id: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+    }): Observable<any> {
+        return this.http.post(`${this.apiUrl}/verify-payment`, paymentData);
     }
 }
